@@ -54,6 +54,7 @@ import { logger } from 'src/boot/logger';
 interface SelectItem {
 	label?: string;
 	name?: string;
+	crossref?: number;
 	id: number;
 }
 
@@ -112,7 +113,7 @@ export default defineComponent({
 			logger.debug(`[LibPanelOPL] update target set: ${store.state.app_state.library_state.target_set_id}`);
 		});
 
-		const getLabelId = (item: SelectItem): SelectItem =>  ({ label: item.name, id: item.id });
+		const getLabelId = (item: SelectItem): SelectItem =>  ({ label: item.name, id: item.crossref ?? item.id });
 
 		return {
 			discipline,
