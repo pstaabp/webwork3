@@ -2,7 +2,7 @@
  * This has some basic routing functions
  */
 
-import { RouteLocationNormalizedLoaded } from 'vue-router';
+import type { RouteLocationNormalizedLoaded } from 'vue-router';
 
 export const parseRouteSetID = (route: RouteLocationNormalizedLoaded) => {
 	return Array.isArray(route.params.set_id)
