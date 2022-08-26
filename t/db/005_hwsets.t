@@ -185,35 +185,56 @@ removeIDs($new_set);
 delete $new_set->{type};
 # add the default set_visible
 $new_set_params->{set_visible} = false;
-is_deeply($new_set_params, $new_set, "addProblemSet: add one homework");
+is_deeply($new_set_params, $new_set, 'addProblemSet: add one homework');
+
+# Add another problem set with extra params:
+my $new_set_params2 = {
+	course_name => 'Precalculus',
+	set_name    => 'HW #10',
+	set_type    => 'HW',
+	set_dates   => {
+		open                   => 100,
+		reduced_scoring        => 120,
+		due                    => 140,
+		answer                 => 200,
+		enable_reduced_scoring => true
+	},
+	set_params => {},
+	bad_field  => 0
+};
+my $new_set2 = $problem_set_rs->addProblemSet(params => $new_set_params2);
+removeIDs($new_set2);
+
+# The added set shouldn't have fields set_name or bad_field.
+delete $new_set_params2->{course_name};
+delete $new_set_params2->{bad_field};
+
+# add the default set_visible
+$new_set_params2->{set_visible} = false;
+
+is_deeply($new_set2, $new_set_params2, 'addProblemSet: add a homework set with a bad field');
 
 # Try to add a homework without set_name
-my $new_set2 = {
-	name      => 'HW #11',
-	set_dates => { open => 100, due => 140, answer => 200 },
-	set_type  => 'HW'
-};
 throws_ok {
 	$problem_set_rs->addProblemSet(
 		params => {
 			course_name => 'Precalculus',
-			%$new_set2
+			name        => 'HW #11',
+			set_dates   => { open => 100, due => 140, answer => 200 },
+			set_type    => 'HW'
 		}
 	);
 }
 'DB::Exception::ParametersNeeded', 'addProblemSet: set_name not passed in.';
 
 # Try to add a homework with bad date fields
-my $new_set3 = {
-	set_name  => 'HW #11',
-	set_dates => { open_set => 100, due => 140, answer => 200 },
-	set_type  => 'HW'
-};
 throws_ok {
 	$problem_set_rs->addProblemSet(
 		params => {
 			course_name => 'Precalculus',
-			%$new_set3
+			set_name    => 'HW #11',
+			set_dates   => { open_set => 100, due => 140, answer => 200 },
+			set_type    => 'HW'
 		}
 	);
 }
@@ -376,14 +397,16 @@ removeIDs($set_with_new_type);
 
 is_deeply($set_with_new_type, $set_with_new_type_params, 'updateSet: change the type of the problem set');
 
-# Try to update a set with an illegal field
-throws_ok {
-	$problem_set_rs->updateProblemSet(
-		info   => { course_name => 'Precalculus', set_id => $new_set_id },
-		params => { bad_field   => 0 }
+# Show that passing a bad field to a problem set updated ignores that field.
+my $updated_set2 = $problem_set_rs->updateProblemSet(
+		info   => { course_name => 'Precalculus', set_name => $new_set2->{set_name} },
+		params => { bad_field   => 0, set_visible => true }
 	);
-}
-'DBIx::Class::Exception', 'updateProblemSet: use a non-existing field';
+removeIDs($updated_set2);
+
+# update the original set of parameters
+$new_set_params2->{set_visible} = true;
+is_deeply($updated_set2, $new_set_params2, 'updateSet: update a set with a bad field.');
 
 # Try to update a set with an illegal date field
 throws_ok {
@@ -399,6 +422,7 @@ throws_ok {
 	$problem_set_rs->updateProblemSet(
 		info   => { course_name => 'Precalculus', set_id => $new_set_id },
 		params => {
+			set_type => 'QUIZ',
 			set_dates => {
 				open   => 999,
 				answer => 100
@@ -413,6 +437,9 @@ my $deleted_set = $problem_set_rs->deleteProblemSet(info => { course_name => 'Pr
 removeIDs($deleted_set);
 is_deeply($set_with_new_type_params, $deleted_set, 'deleteProblemSet: delete a set');
 
+# Delete another set that was added
+$problem_set_rs->deleteProblemSet(info => { course_name => 'Precalculus', set_name => $new_set_params2->{set_name} });
+
 # Try deleting a set with invalid course_name
 throws_ok {
 	$problem_set_rs->deleteProblemSet(
@@ -422,7 +449,7 @@ throws_ok {
 		}
 	);
 }
-'DB::Exception::CourseNotFound', 'deleteCourse: try to delete a set from a not existent course.';
+'DB::Exception::CourseNotFound', 'deleteProblemSet: try to delete a set from a not existent course.';
 
 # Try deleting a set that does not exist
 throws_ok {
@@ -433,7 +460,7 @@ throws_ok {
 		}
 	);
 }
-'DB::Exception::SetNotInCourse', 'deleteCourse: try to delete a set that not exist.';
+'DB::Exception::SetNotInCourse', 'deleteProblemSet: try to delete a set that not exist.';
 
 # ensure that the problem_sets table in the database is restored.
 @all_problem_sets     = (@hw_sets, @quizzes, @review_sets);

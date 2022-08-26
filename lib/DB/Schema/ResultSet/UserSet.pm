@@ -323,14 +323,13 @@ That is, a C<ProblemSet> (HWSet, Quiz, ...) with UserSet overrides.
 
 =cut
 
+use Data::Dumper;
+
 sub addUserSet ($self, %args) {
 	my $problem_set = $self->rs('ProblemSet')->getProblemSet(info => $args{params}, as_result_set => 1);
 	my $course_user = $self->rs('User')->getCourseUser(info => $args{params}, as_result_set => 1);
 
-	# Filter down to only the relevant keys.
-	my %params =
-		map { exists $args{params}{$_} ? ($_ => $args{params}{$_}) : () }
-		qw/set_dates set_params set_visible set_version/;
+	my %params = $self->filterParams($args{params});
 
 	my $user_set = $problem_set->find_related(
 		'user_sets',
@@ -382,9 +381,7 @@ sub updateUserSet ($self, %args) {
 		unless defined($user_set);
 
 	# Filter down to only the relevant keys.
-	my %filtered =
-		map { exists $args{params}{$_} ? ($_ => $args{params}{$_}) : () }
-		qw/set_dates set_params set_visible set_version/;
+	my %filtered = $self->filterParams($args{params});
 
 	# merge this update over any existing overrides (e.g. don't lose date overrides when overriding params)
 	my %existing_overrides = $user_set->get_inflated_columns;

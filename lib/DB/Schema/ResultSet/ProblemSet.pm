@@ -5,7 +5,7 @@ use warnings;
 use feature 'signatures';
 no warnings qw/experimental::signatures/;
 
-use base 'DBIx::Class::ResultSet';
+use base qw/DBIx::Class::ResultSet DB::Validation/;
 
 use Clone qw/clone/;
 
@@ -325,42 +325,39 @@ An hashref of a problem set or an object of type C<DBIx::Class::ResultSet::Probl
 
 =cut
 
+use Data::Dumper;
+
 sub addProblemSet {
 	my ($self, %args) = @_;
 	my $course = $self->rs('Course')->getCourse(info => getCourseInfo($args{params}), as_result_set => 1);
 
-	my $set_params = clone $args{params};
-	$set_params->{type} = $SET_TYPES->{ $set_params->{set_type} || 'HW' };
-	# Delete a few fields that may be passed in but are not in the database
-	# Note: on client-side set_id=0 means that the set is new, so delete this
-	#  and it will be determined.
-	for my $key (qw/course_id course_name set_type set_id/) {
-		delete $set_params->{$key} if defined $set_params->{$key};
-	}
+		# Filter the params to only those in the database and switch set_type as a string to a value.
+	my %filtered_params =
+		$self->filterParams({ %{ $args{params} }, type => $SET_TYPES->{ $args{params}{set_type} || 'HW' } });
 
 	DB::Exception::ParametersNeeded->throw(message => 'You must defined the field set_name in the params argument')
-		unless defined($set_params->{set_name});
+		unless defined($filtered_params{set_name});
 
 	# Check if the set exists.
 	my $problem_set = $self->getProblemSet(
 		info => {
 			course_id => $course->course_id,
-			set_name  => $set_params->{set_name}
+			set_name  => $filtered_params{set_name}
 		},
 		as_result_set => 1,
 		skip_throw    => 1
 	);
 
 	DB::Exception::SetAlreadyExists->throw(message =>
-			"The problem set with name $set_params->{set_name} already exists in the course $course->course_name")
+			"The problem set with name $filtered_params{set_name} already exists in the course $course->course_name")
 		if defined($problem_set);
 
 	# Check that fields/dates/parameters are valid
-	my $set_obj = $self->new($set_params);
+	my $set_obj = $self->new(\%filtered_params);
 	$set_obj->validate('set_dates');
 	$set_obj->validate('set_params');
 
-	my $new_set = $course->add_to_problem_sets($set_params);
+	my $new_set = $course->add_to_problem_sets(\%filtered_params);
 
 	return $new_set if $args{as_result_set};
 	my $set = { $new_set->get_inflated_columns, set_type => $new_set->set_type };
@@ -422,52 +419,49 @@ sub updateProblemSet ($self, %args) {
 	my $problem_set = $self->getProblemSet(info => $args{info}, as_result_set => 1);
 	my $set_params  = { $problem_set->get_inflated_columns };
 
-	my $params = clone($args{params});
-	if (defined $params->{set_type}) {
-		$params->{type} = $SET_TYPES->{ $params->{set_type} };
-		delete $params->{set_type};
-	}
+	# filter out any fields not in the database and switch the set_type to a number.
+	my %filtered_params = $self->filterParams({ %{ $args{params} }, type => $SET_TYPES->{ $args{params}{set_type} || 'HW' } });
 
-	my $params2;
+	my $updated_params;
 
 	# If the problem set type changed, don't update the params, just used the ones passed in.
-	if (!defined($params->{type}) || $problem_set->type == $params->{type}) {
-		$params2 = updateAllFields($set_params, $params);
+	if (!defined($filtered_params{type}) || $problem_set->type == $filtered_params{type}) {
+		$updated_params = updateAllFields($set_params, \%filtered_params);
 	} else {
 		# The set type is changing, so assume that the set_dates and set_params are deleted
 		# unless passed in.
-		$params2 = $params;
-		unless (defined $params2->{set_dates}) {
-			if ($params2->{type} == 1) {    # HomeworkSet
-				$params2->{set_dates} = {
+		$updated_params = \%filtered_params;
+		unless (defined $updated_params->{set_dates}) {
+			if ($updated_params->{type} == 1) {    # HomeworkSet
+				$updated_params->{set_dates} = {
 					open            => 0,
 					reduced_scoring => 0,
 					due             => 0,
 					answer          => 0,
 				};
-			} elsif ($params2->{type} == 2) {    # Quiz
-				$params2->{set_dates} = {
+			} elsif ($updated_params->{type} == 2) {    # Quiz
+				$updated_params->{set_dates} = {
 					open   => 0,
 					due    => 0,
 					answer => 0,
 				};
-			} elsif ($params2->{type} == 3) {    # JITAR
-				$params2->{set_dates} = {
+			} elsif ($updated_params->{type} == 3) {    # JITAR
+				$updated_params->{set_dates} = {
 					open            => 0,
 					reduced_scoring => 0,
 					due             => 0,
 					answer          => 0,
 				};
-			} elsif ($params2->{type} == 4) {    # ReviewSet
-				$params2->{set_dates} = {
+			} elsif ($updated_params->{type} == 4) {    # ReviewSet
+				$updated_params->{set_dates} = {
 					open   => 0,
 					closed => 0
 				};
 			}
 		}
 	}
-	$params2->{set_params} = {} unless defined($params2->{set_params});
-	my $set_obj = $self->new($params2);
+	$updated_params->{set_params} = {} unless defined $updated_params->{set_params};
+	my $set_obj = $self->new($updated_params);
 
 	# Check the parameters are valid.
 	$set_obj->validate('set_dates')  if $set_obj->set_dates;

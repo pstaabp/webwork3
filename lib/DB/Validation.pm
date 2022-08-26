@@ -17,6 +17,20 @@ use Exception::Class qw/
 
 =pod
 
+=head2 filterParams
+
+Filter the params passed into either an add or update on the database.
+
+=cut
+
+sub filterParams ($self, $params) {
+	my $pk = ($self->result_source->primary_columns)[0];
+
+	# Get the list of columns and remove the primary key
+	my @columns = grep { $_ ne $pk } $self->result_source->columns;
+	return map { exists $params->{$_} ? ($_ => $params->{$_}) : () } @columns;
+}
+
 =head2 validate
 
 Validate the parameter or date field based on the field name. This checks for valid fields and required
