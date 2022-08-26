@@ -17,6 +17,7 @@ use lib "$main::ww3_dir/t/lib";
 use Test::More;
 use Test::Exception;
 use YAML::XS qw/LoadFile/;
+use Mojo::JSON qw/true false/;
 use DateTime::Format::Strptime;
 
 use DB::Schema;
@@ -87,24 +88,49 @@ throws_ok {
 }
 'DB::Exception::CourseNotFound', 'getCourse: get a non-existent course';
 
-# Add a course
+# Add a course and check the default values
 my $new_course_params = {
-	course_name  => 'Geometry',
-	visible      => 1,
-	course_dates => {}
+	course_name  => 'Geometry'
 };
 
 my $new_course      = $course_rs->addCourse(params => $new_course_params);
 my $added_course_id = $new_course->{course_id};
 removeIDs($new_course);
 
+# Add the default values
+$new_course_params->{visible} = true;
+$new_course_params->{course_dates} = { open => 0, end => 0 };
+
 is_deeply($new_course_params, $new_course, 'addCourse: add a new course');
+
+# Add another course with bad fields that are ignored.
+my $new_course_params2 = {
+	course_name  => 'Number Theory',
+	visible      => true,
+	course_dates => { open => 1000, end => 2000 },
+	non_existent_field => 11
+};
+
+my $new_course2 = $course_rs->addCourse(params => $new_course_params2);
+removeIDs($new_course2);
+delete $new_course_params2->{non_existent_field};
+
+is_deeply($new_course2, $new_course_params2, 'addCourse: add a new course with bad fields');
 
 # Add a course that already exists
 throws_ok {
 	$course_rs->addCourse(params => { course_name => 'Geometry', visible => 1 });
 }
 'DB::Exception::CourseAlreadyExists', 'addCourse: course already exists';
+
+# Try to add a course with bad course dates
+throws_ok {
+	$course_rs->addCourse(params => {
+		course_name => 'XXX',
+		course_dates => { open => 1000, end => 500}
+	});
+}
+'DB::Exception::ImproperDateOrder', 'addCourse: try to add a course with dates out of order';
 
 # Update the course name
 my $updated_course = $course_rs->updateCourse(
@@ -133,6 +159,9 @@ my $deleted_course = $course_rs->deleteCourse(info => { course_name => 'Geometry
 removeIDs($deleted_course);
 
 is_deeply($new_course_params, $deleted_course, 'deleteCourse: delete a course');
+
+# Delete another created course
+$course_rs->deleteCourse(info => { course_name => $new_course_params2->{course_name} });
 
 # Try to delete a non-existent course by name
 throws_ok {

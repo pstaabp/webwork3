@@ -50,7 +50,7 @@ __PACKAGE__->add_columns(
 	},
 	course_dates => {
 		data_type          => 'text',
-		default_value      => '{}',
+		default_value      => '{ "open": 0, "end": 0}',
 		retrieve_on_insert => 1,
 		serializer_class   => 'JSON',
 		serializer_options => { utf8 => 1 }
@@ -107,7 +107,7 @@ sub additional_validation ($course, $field_name) {
 
 	my $dates = $course->get_inflated_column('course_dates');
 	DB::Exception::ImproperDateOrder->throw(message => 'The course dates are not in order')
-		unless $dates->{end} > $dates->{open};
+		unless $dates->{end} >= $dates->{open};
 
 	return 1;
 }

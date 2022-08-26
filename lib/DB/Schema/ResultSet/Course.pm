@@ -5,10 +5,10 @@ use warnings;
 use feature 'signatures';
 no warnings qw/experimental::signatures/;
 
-use base 'DBIx::Class::ResultSet';
+use base qw/DBIx::Class::ResultSet DB::Validation/;
 
 use Clone qw/clone/;
-use DB::Utils qw/getCourseInfo getUserInfo/;
+use DB::Utils qw/getCourseInfo getUserInfo updateAllFields/;
 use DB::Exception;
 use Exception::Class qw/DB::Exception::CourseNotFound DB::Exception::CourseExists/;
 
@@ -90,7 +90,8 @@ sub getCourse ($self, %args) {
 	my $course = $self->find(getCourseInfo($args{info}));
 	unless (defined($course)) {
 		my $info = getCourseInfo($args{info});
-		DB::Exception::CourseNotFound->throw(message => "The course: $info->{course_name} does not exist.")
+		DB::Exception::CourseNotFound->throw(
+			message => "The course: $info->{course_name} does not exist.")
 			if defined($info->{course_name});
 		DB::Exception::CourseNotFound->throw(
 			message => "The course with course_id of $info->{course_id} does not exist.")
@@ -98,7 +99,6 @@ sub getCourse ($self, %args) {
 	}
 
 	return $course if $args{as_result_set};
-
 	return { $course->get_inflated_columns };
 }
 
@@ -135,18 +135,17 @@ sub addCourse ($self, %args) {
 
 	DB::Exception::CourseAlreadyExists->throw(course_name => $course_params->{course_name}) if defined($course);
 
-	my $params = {};
-	for my $field (qw/course_name visible course_dates/) {
-		# This should be looked up.
-		$params->{$field} = $course_params->{$field} if defined($course_params->{$field});
-	}
-	$params->{course_settings} = {};
+	my %params = $self->filterParams($args{params});
+	$params{course_settings} = {};
 
 	# Check the parameters.
-	my $new_course = $self->create($params);
+	my $new_course = $self->new(\%params);
+	$new_course->validate('course_dates');
+	my $course_to_return = $new_course->insert;
+	#$course_to_return->validate('course_dates');
 
-	return $new_course if $args{as_result_set};
-	return { $new_course->get_inflated_columns };
+	return $course_to_return if $args{as_result_set};
+	return { $course_to_return->get_inflated_columns };
 }
 
 =head2 deleteCourse
@@ -205,8 +204,12 @@ The updated course as a C<DBIx::Class::ResultSet::Course> object or a hashref.
 
 sub updateCourse ($self, %args) {
 	my $course = $self->getCourse(info => getCourseInfo($args{info}), as_result_set => 1);
-	## TODO: check the validity of the params
-	my $course_to_return = $course->update($args{params});
+	# Filter the params
+	my %filtered_params = $self->filterParams($args{params});
+	my $params_to_update = updateAllFields({$course->get_inflated_columns}, \%filtered_params);
+	my $new_course = $self->new($params_to_update);
+	$new_course->validate('course_dates');
+	my $course_to_return = $course->update(\%filtered_params);
 
 	return $course_to_return if $args{as_result_set};
 	return { $course_to_return->get_inflated_columns };
